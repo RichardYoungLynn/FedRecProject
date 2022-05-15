@@ -2,13 +2,15 @@ import pandas as pd
 import numpy as np
 import os
 import random
+import torch
 
 
 def load_dataset(args):
     if args.dataset == 'movielens':
         rating_matrix = load_movielens_dataset()
-        train_dataset, test_dataset, mask = split_movielens_dataset(rating_matrix)
-        return train_dataset, test_dataset, mask
+        train_dataset, test_dataset = split_movielens_dataset(rating_matrix)
+        train_dataset = torch.tensor(train_dataset).to(args.device)
+        return train_dataset, test_dataset
 
 
 def load_movielens_dataset(type='ml-100k'):
@@ -64,5 +66,4 @@ def split_movielens_dataset(rating_matrix):
             test_dataset.append((user_id, item_id, rating_matrix[user_id][item_id]))
             rating_matrix[user_id][item_id] = 0
     train_dataset = rating_matrix
-    mask = (train_dataset > 0) * 1.0
-    return train_dataset, test_dataset, mask
+    return train_dataset, test_dataset

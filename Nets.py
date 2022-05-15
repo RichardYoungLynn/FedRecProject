@@ -3,14 +3,13 @@ from torch import nn
 
 
 class LocalFCFModel(nn.Module):
-    def __init__(self, args, features, user_rating, Lambda):
+    def __init__(self, args, user_rating):
         super(LocalFCFModel, self).__init__()
         self.args=args
-        self.Lambda = Lambda
         self.item_factor = None
         self.user_rating = user_rating
-        self.mask = self.rating > 0
-        self.user_factor = nn.Parameter(nn.init.normal_(torch.empty(1, features), std=0.35), requires_grad=True)
+        self.mask = self.user_rating > 0
+        self.user_factor = nn.Parameter(nn.init.normal_(torch.empty(1, args.feature_num), std=0.35), requires_grad=True)
         self.history_gradients = []
 
     def forward(self, item_factor):
@@ -18,7 +17,7 @@ class LocalFCFModel(nn.Module):
 
     def calculate_loss(self):
         rmse = self.calculate_rmse()
-        regularization = self.Lambda * (torch.norm(self.user_factor)**2 +
+        regularization = self.args.Lambda * (torch.norm(self.user_factor)**2 +
                                         (torch.norm(self.item_factor, dim=0)*self.mask)**2)
         return rmse + regularization.sum()
 
@@ -37,16 +36,14 @@ class LocalFCFModel(nn.Module):
 
 
 class ServerFCFModel(nn.Module):
-    def __init__(self, args, item_num, features, device=None):
+    def __init__(self, args, item_num=1682):
         super(ServerFCFModel, self).__init__()
         self.args = args
-        self.device = device
-        self.features = features
-        self.item_factor = nn.init.normal_(torch.empty(self.features, item_num), std=0.35).to(self.device)
+        self.item_factor = nn.init.normal_(torch.empty(args.feature_num, item_num), std=0.35).to(args.device)
 
     def update(self, gradient):
-        gradient = gradient.to(self.device)
-        self.item_factor = self.item_factor - self.args.lr * gradient
+        gradient = gradient.to(self.args.device)
+        self.item_factor = self.item_factor - self.args.server_lr * gradient
 
     def get_item_factor(self):
         return self.item_factor.detach()
