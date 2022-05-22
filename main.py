@@ -23,3 +23,13 @@ if __name__ == '__main__':
             candidates.append(Client(args, train_dataset[user_id]))
         server = Server(args, test_dataset, candidates)
         server.train()
+
+    # data_1 = np.load('dataset_sample/tiktok/train_sample.npy')
+    # data_2 = np.load('dataset_sample/tiktok/test_sample.npy')
+    # data_3 = np.load('dataset_sample/tiktok/val_sample.npy')
+    # data_4 = torch.load('dataset_sample/tiktok/a_feat_sample.pt')
+    # data_5 = torch.load('dataset_sample/tiktok/t_feat_sample.pt')
+    # data_6 = torch.load('dataset_sample/tiktok/v_feat_sample.pt')
+    # data_7 = np.load('dataset_sample/tiktok/user_item_dict_sample.npy')
+
+

@@ -4,6 +4,7 @@ import argparse
 def args_parser():
     parser = argparse.ArgumentParser()
 
+
     parser.add_argument('--epochs', type=int, default=100, help="rounds of training")
     parser.add_argument('--local_epochs', type=int, default=10, help="the number of local epochs")
     parser.add_argument('--client_selection', type=str, default='random', help="the way of selecting participants from candidates")
@@ -21,6 +22,12 @@ def args_parser():
     parser.add_argument('--client_lr', type=float, default=1e-4, help="client's learning rate")
     parser.add_argument('--Lambda', type=float, default=0.02, help="penalty factor")
     parser.add_argument('--feature_num', type=int, default=5, help="feature in latent factor")
+
+    # NCF
+    parser.add_argument('--MF_latent_dim', type=int, default=8, help="feature number in MF latent factor")
+    parser.add_argument('--MLP_latent_dim', type=int, default=32, help="feature number in MLP latent factor")
+    parser.add_argument('--items_num', type=int, default=5, help="items number")
+    parser.add_argument('--topK', type=int, default=10, help="topK")
 
 
 
