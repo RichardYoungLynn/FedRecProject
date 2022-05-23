@@ -12,21 +12,24 @@ from sklearn.cluster import KMeans
 from pulp import *
 import heapq
 
-from Nets import ServerFCFModel,NCF
+from Nets import ServerFCFModel, NCF
+from DataProcess import DatasetSplit, get_train_instances
 
 
 class Server(object):
-    def __init__(self, args, test_dataset, candidates):
+    def __init__(self, args, test_dataset, test_negatives, candidates):
         self.args = args
         self.participants = [-1] * self.args.candidate_num
         self.candidates = candidates
         self.args = args
-        self.test_dataset = test_dataset
         if args.model == 'fcf':
             self.server_fcf_model = ServerFCFModel(args).to(args.device)
         elif args.model == 'ncf':
             self.global_model = NCF(args).to(args.device)
-            self.test_dataloader = DataLoader(test_dataset, batch_size=args.test_batch_size)
+            self.test_dataset = test_dataset
+            self.test_negatives = test_negatives
+            # self.test_dataset = torch.tensor(np.array(test_dataset)).to(args.device)
+            # self.test_negatives = torch.tensor(np.array(test_negatives)).to(args.device)
             self.loss_func = nn.BCELoss()
 
     def reset(self):
@@ -105,31 +108,39 @@ class Server(object):
 
     def train(self):
         self.global_model.train()
-        local_models = []
-        local_losses = []
-        for participant in self.participants:
-            if participant == -1:
-                continue
-            local_model, local_loss = participant.train(copy.deepcopy(self.get_global_model()))
-            local_models.append(local_model)
-            local_losses.append(local_loss)
-        return local_models, local_losses
+        for epoch_index in range(self.args.epochs):
+            (hits, ndcgs) = self.test()
+            print("epoch:", epoch_index, "hits:", np.array(hits).mean(), "ndcgs:", np.array(ndcgs).mean())
+            self.reset()
+            self.client_selection()
+            local_models = []
+            local_losses = []
+            for participant in self.participants:
+                if participant == -1:
+                    continue
+                local_model, local_loss = participant.train(copy.deepcopy(self.get_global_model()))
+                local_models.append(local_model)
+                local_losses.append(local_loss)
+            aggregation_weight = self.init_aggregation_weight()
+            self.global_model.load_state_dict(self.model_aggregation(local_models, aggregation_weight))
+
 
     def eval_one_rating(self, idx):
-        rating = self._testRatings[idx]
-        items = self._testNegatives[idx]
+        rating = self.test_dataset[idx]
+        items = self.test_negatives[idx]
         u = rating[0]
         gtItem = rating[1]
         items.append(gtItem)
         # Get prediction scores
         map_item_score = {}
-        users = np.full(len(items), u, dtype='int32')
-        predictions = self.global_model.predict([users, np.array(items)],
-                                     batch_size=100, verbose=0)
+        users = np.full(len(items), u)
+        users = torch.tensor(np.array(users), dtype=torch.long).to(self.args.device)
+        items = torch.tensor(np.array(items), dtype=torch.long).to(self.args.device)
+        predictions = self.global_model(users, items)
         for i in range(len(items)):
             item = items[i]
             map_item_score[item] = predictions[i]
-        items.pop()
+        # items.pop()
 
         # Evaluate top rank list
         ranklist = heapq.nlargest(self.args.topK, map_item_score, key=map_item_score.get)
@@ -153,7 +164,7 @@ class Server(object):
     def test(self):
         self.global_model.eval()
         hits, ndcgs = [], []
-        for idx, (user_input, item_input, labels) in enumerate(self.test_dataloader):
+        for idx in range(len(self.test_dataset)):
             (hr, ndcg) = self.eval_one_rating(idx)
             hits.append(hr)
             ndcgs.append(ndcg)

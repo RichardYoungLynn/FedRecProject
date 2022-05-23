@@ -7,30 +7,33 @@ class NCF(nn.Module):
         super(NCF, self).__init__()
 
         self.MF_Embedding_User = nn.Embedding(num_embeddings=args.participant_num, embedding_dim=args.MF_latent_dim)
-        self.MF_Embedding_Item = nn.Embedding(num_embeddings=args.items_num, embedding_dim=args.MF_latent_dim)
+        self.MF_Embedding_Item = nn.Embedding(num_embeddings=args.num_items, embedding_dim=args.MF_latent_dim)
 
         self.MLP_Embedding_User = nn.Embedding(num_embeddings=args.participant_num, embedding_dim=args.MLP_latent_dim)
-        self.MLP_Embedding_Item = nn.Embedding(num_embeddings=args.items_num, embedding_dim=args.MLP_latent_dim)
-        self.fc1 = nn.Linear(args.MLP_latent_dim*2, args.MLP_latent_dim)
-        self.fc2 = nn.Linear(args.MLP_latent_dim, args.MLP_latent_dim/2)
-        self.fc3 = nn.Linear(args.MLP_latent_dim/2, args.MLP_latent_dim/4)
+        self.MLP_Embedding_Item = nn.Embedding(num_embeddings=args.num_items, embedding_dim=args.MLP_latent_dim)
+        self.fc1 = nn.Linear(int(args.MLP_latent_dim*2), args.MLP_latent_dim)
+        self.fc2 = nn.Linear(args.MLP_latent_dim, int(args.MLP_latent_dim/2))
+        self.fc3 = nn.Linear(int(args.MLP_latent_dim/2), int(args.MLP_latent_dim/4))
 
-        self.output = nn.Linear(args.MF_latent_dim+args.MLP_latent_dim/4, 1)
+        self.output = nn.Linear(args.MF_latent_dim+int(args.MLP_latent_dim/4), 1)
 
         self.sigmoid = nn.Sigmoid()
+        self.relu = nn.ReLU()
 
     def forward(self, user_input, item_input):
         MF_User_Vector = self.MF_Embedding_User(user_input)
+        # print(user_input.shape)
+        # print(user_input)
         MF_Item_Vector = self.MF_Embedding_Item(item_input)
-        MF_User_Vector = torch.flatten(MF_User_Vector)
-        MF_Item_Vector = torch.flatten(MF_Item_Vector)
+        # MF_User_Vector = torch.flatten(MF_User_Vector)
+        # MF_Item_Vector = torch.flatten(MF_Item_Vector)
         mf_vector = torch.mul(MF_User_Vector, MF_Item_Vector)
 
         MLP_User_Vector = self.MLP_Embedding_User(user_input)
         MLP_Item_Vector = self.MLP_Embedding_Item(item_input)
-        MLP_User_Vector = torch.flatten(MLP_User_Vector)
-        MLP_Item_Vector = torch.flatten(MLP_Item_Vector)
-        mlp_vector = torch.cat((MLP_User_Vector, MLP_Item_Vector), 0)
+        # MLP_User_Vector = torch.flatten(MLP_User_Vector)
+        # MLP_Item_Vector = torch.flatten(MLP_Item_Vector)
+        mlp_vector = torch.cat((MLP_User_Vector, MLP_Item_Vector), 1)
         mlp_vector = self.fc1(mlp_vector)
         mlp_vector = self.relu(mlp_vector)
         mlp_vector = self.fc2(mlp_vector)
@@ -38,10 +41,10 @@ class NCF(nn.Module):
         mlp_vector = self.fc3(mlp_vector)
         mlp_vector = self.relu(mlp_vector)
 
-        predict_vector = torch.cat((mf_vector, mlp_vector), 0)
+        predict_vector = torch.cat((mf_vector, mlp_vector), 1)
         prediction = self.output(predict_vector)
         prediction = self.sigmoid(prediction)
-
+        prediction = torch.flatten(prediction)
         return prediction
 
 
@@ -50,7 +53,7 @@ class NCF(nn.Module):
 #         super(GMF, self).__init__()
 #
 #         self.MF_Embedding_User = nn.Embedding(num_embeddings=args.participant_num, embedding_dim=args.MF_latent_dim)
-#         self.MF_Embedding_Item = nn.Embedding(num_embeddings=args.items_num, embedding_dim=args.MF_latent_dim)
+#         self.MF_Embedding_Item = nn.Embedding(num_embeddings=args.num_items, embedding_dim=args.MF_latent_dim)
 #         self.fc = nn.Linear(dim_in, dim_hidden)
 #         self.sigmoid = nn.Sigmoid()
 #
@@ -72,7 +75,7 @@ class NCF(nn.Module):
 #         super(MLP, self).__init__()
 #
 #         self.MLP_Embedding_User = nn.Embedding(num_embeddings=args.participant_num, embedding_dim=args.MLP_latent_dim)
-#         self.MLP_Embedding_Item = nn.Embedding(num_embeddings=args.items_num, embedding_dim=args.MLP_latent_dim)
+#         self.MLP_Embedding_Item = nn.Embedding(num_embeddings=args.num_items, embedding_dim=args.MLP_latent_dim)
 #         self.fc1 = nn.Linear(dim_in, dim_hidden)
 #         self.fc2 = nn.Linear(dim_hidden, dim_hidden)
 #         self.fc3 = nn.Linear(dim_hidden, dim_out)

@@ -6,29 +6,21 @@ import copy
 import numpy as np
 
 from Nets import LocalFCFModel, NCF
+from DataProcess import DatasetSplit,get_train_instances
 
-# class DatasetSplit(Dataset):
-#     def __init__(self, dataset, idxs):
-#         self.dataset = dataset
-#         self.idxs = list(idxs)
-#
-#     def __len__(self):
-#         return len(self.idxs)
-#
-#     def __getitem__(self, item):
-#         image, label = self.dataset[self.idxs[item]]
-#         return image, label
+
 
 class Client(object):
-    def __init__(self, args, user_rating):
+    def __init__(self, args, train_dataset):
         self.args = args
         if args.model == 'fcf':
-            self.local_fcf_model = LocalFCFModel(args, user_rating).to(args.device)
+            self.local_fcf_model = LocalFCFModel(args, train_dataset).to(args.device)
         elif args.model == 'ncf':
             self.local_model = NCF(args).to(args.device)
             self.loss_func = nn.BCELoss()
-            # self.train_dataloader = DataLoader(DatasetSplit(train_dataset, data_index),
-            #                                    batch_size=self.args.local_batch_size, shuffle=True)
+            user_input, item_input, labels=get_train_instances(args,train_dataset)
+            self.train_dataloader = DataLoader(DatasetSplit(args, user_input, item_input, labels),
+                                               batch_size=self.args.local_batch_size, shuffle=True)
 
     # def set_model(self, item_factor):
     #     self.local_fcf_model.set_item_factor(item_factor)
@@ -46,7 +38,7 @@ class Client(object):
     #     return self.local_fcf_model.forward(item_factor)
 
     def get_data_num(self):
-        return self.data_num
+        return len(self.train_dataloader)
 
     def get_local_model(self):
         return self.local_model.state_dict()
@@ -64,7 +56,7 @@ class Client(object):
                 user_input, item_input, labels = user_input.to(self.args.device), item_input.to(self.args.device), labels.to(self.args.device)
                 self.local_model.zero_grad()
                 predict = self.local_model(user_input, item_input)
-                loss = self.loss_func(predict, labels)
+                loss = self.loss_func(predict, labels.float())
                 loss.backward()
                 optimizer.step()
                 scheduler.step()
