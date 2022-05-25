@@ -6,10 +6,10 @@ class NCF(nn.Module):
     def __init__(self, args):
         super(NCF, self).__init__()
 
-        self.MF_Embedding_User = nn.Embedding(num_embeddings=args.participant_num, embedding_dim=args.MF_latent_dim)
+        self.MF_Embedding_User = nn.Embedding(num_embeddings=args.candidate_num, embedding_dim=args.MF_latent_dim)
         self.MF_Embedding_Item = nn.Embedding(num_embeddings=args.num_items, embedding_dim=args.MF_latent_dim)
 
-        self.MLP_Embedding_User = nn.Embedding(num_embeddings=args.participant_num, embedding_dim=args.MLP_latent_dim)
+        self.MLP_Embedding_User = nn.Embedding(num_embeddings=args.candidate_num, embedding_dim=args.MLP_latent_dim)
         self.MLP_Embedding_Item = nn.Embedding(num_embeddings=args.num_items, embedding_dim=args.MLP_latent_dim)
         self.fc1 = nn.Linear(int(args.MLP_latent_dim*2), args.MLP_latent_dim)
         self.fc2 = nn.Linear(args.MLP_latent_dim, int(args.MLP_latent_dim/2))

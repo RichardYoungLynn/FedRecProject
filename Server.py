@@ -1,6 +1,7 @@
 import math
 import random
 import time
+import datetime
 
 import numpy as np
 import copy
@@ -25,7 +26,11 @@ class Server(object):
         if args.model == 'fcf':
             self.server_fcf_model = ServerFCFModel(args).to(args.device)
         elif args.model == 'ncf':
-            self.global_model = NCF(args).to(args.device)
+            # self.global_model = NCF(args).to(args.device)
+            self.global_model = NCF(args)
+            self.global_model = nn.DataParallel(self.global_model)
+            self.global_model = self.global_model.cuda()
+
             self.test_dataset = test_dataset
             self.test_negatives = test_negatives
             # self.test_dataset = torch.tensor(np.array(test_dataset)).to(args.device)
@@ -40,9 +45,12 @@ class Server(object):
 
     def client_selection(self):
         if self.args.client_selection == 'random':
-            participant_ids = np.random.choice(self.args.candidate_num, self.args.participant_num, replace=False)
-            for participant_id in participant_ids:
-                self.participants[participant_id] = self.candidates[participant_id]
+            if self.args.participant_num == 1:
+                self.participants[0] = self.candidates[0]
+            else:
+                participant_ids = np.random.choice(self.args.candidate_num, self.args.participant_num, replace=False)
+                for participant_id in participant_ids:
+                    self.participants[participant_id] = self.candidates[participant_id]
 
     def init_aggregation_weight(self):
         aggregation_weight = np.array([1] * self.args.participant_num, dtype='float64')
@@ -50,7 +58,7 @@ class Server(object):
         for i in range(len(self.participants)):
             if self.participants[i] == -1:
                 continue
-            if self.args.client_selection == 'ramdom':
+            if self.args.client_selection == 'random':
                 aggregation_weight[j] = self.participants[i].get_data_num()
             j += 1
         return aggregation_weight
@@ -107,12 +115,12 @@ class Server(object):
     #     return rmse
 
     def train(self):
-        self.global_model.train()
         for epoch_index in range(self.args.epochs):
             (hits, ndcgs) = self.test()
             print("epoch:", epoch_index, "hits:", np.array(hits).mean(), "ndcgs:", np.array(ndcgs).mean())
             self.reset()
             self.client_selection()
+            self.global_model.train()
             local_models = []
             local_losses = []
             for participant in self.participants:
@@ -124,6 +132,32 @@ class Server(object):
             aggregation_weight = self.init_aggregation_weight()
             self.global_model.load_state_dict(self.model_aggregation(local_models, aggregation_weight))
 
+    def train_centralized(self, train_dataset):
+        user_input, item_input, labels = get_train_instances(self.args, train_dataset)
+        # print(len(user_input))
+        train_dataloader = DataLoader(DatasetSplit(self.args, user_input, item_input, labels),
+                                      batch_size=self.args.local_batch_size, shuffle=True)
+        optimizer = torch.optim.SGD(self.global_model.parameters(), lr=self.args.learning_rate,
+                                    momentum=self.args.momentum)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=self.args.learning_rate_decay)
+        for epoch_index in range(self.args.epochs):
+            t1 = datetime.datetime.now()
+            (hits, ndcgs) = self.test()
+            t2 = datetime.datetime.now()
+            print("test time:", (t2 - t1).seconds)
+            print("epoch:", epoch_index, "hits:", np.array(hits).mean(), "ndcgs:", np.array(ndcgs).mean())
+            self.global_model.train()
+            t1 = datetime.datetime.now()
+            for batch_id, (user_input, item_input, labels) in enumerate(train_dataloader):
+                user_input, item_input, labels = user_input.cuda(), item_input.cuda(), labels.cuda()
+                self.global_model.zero_grad()
+                predict = self.global_model(user_input, item_input)
+                loss = self.loss_func(predict, labels.float())
+                loss.backward()
+                optimizer.step()
+                scheduler.step()
+            t2 = datetime.datetime.now()
+            print("train time:", (t2 - t1).seconds)
 
     def eval_one_rating(self, idx):
         rating = self.test_dataset[idx]
@@ -134,12 +168,16 @@ class Server(object):
         # Get prediction scores
         map_item_score = {}
         users = np.full(len(items), u)
-        users = torch.tensor(np.array(users), dtype=torch.long).to(self.args.device)
-        items = torch.tensor(np.array(items), dtype=torch.long).to(self.args.device)
-        predictions = self.global_model(users, items)
-        for i in range(len(items)):
+        # users = torch.tensor(np.array(users), dtype=torch.long).to(self.args.device)
+        # items = torch.tensor(np.array(items), dtype=torch.long).to(self.args.device)
+        users_tensor = torch.tensor(np.array(users), dtype=torch.long).cuda()
+        items_tensor = torch.tensor(np.array(items), dtype=torch.long).cuda()
+        predictions = self.global_model(users_tensor, items_tensor)
+        items_len = len(items)
+        for i in range(items_len):
             item = items[i]
             map_item_score[item] = predictions[i]
+        items.pop()
         # items.pop()
 
         # Evaluate top rank list
@@ -164,7 +202,8 @@ class Server(object):
     def test(self):
         self.global_model.eval()
         hits, ndcgs = [], []
-        for idx in range(len(self.test_dataset)):
+        test_lens = len(self.test_dataset)
+        for idx in range(test_lens):
             (hr, ndcg) = self.eval_one_rating(idx)
             hits.append(hr)
             ndcgs.append(ndcg)
